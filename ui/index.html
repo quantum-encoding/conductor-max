@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔱 Conductor Max - AI Orchestration Platform</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Top Bar -->
+        <header class="top-bar">
+            <div class="logo">
+                <span class="logo-icon">🔱</span>
+                <span class="logo-text">CONDUCTOR MAX</span>
+                <span class="logo-subtitle">Quantum Encoding Ltd</span>
+            </div>
+            <div class="status-bar">
+                <div class="agent-count">
+                    <span class="count-icon">🤖</span>
+                    <span id="active-agents">0</span> Active Agents
+                </div>
+                <div class="connection-status" id="connection-status">
+                    <span class="status-dot online"></span>
+                    <span>Orchestrator Ready</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-container">
+            <!-- Left Sidebar: Agent Status -->
+            <aside class="agent-sidebar">
+                <div class="sidebar-header">
+                    <h3>Agent Fleet</h3>
+                    <div class="agent-controls">
+                        <button class="spawn-btn" onclick="spawnAgent('claude')">+ Claude</button>
+                        <button class="spawn-btn" onclick="spawnAgent('gemini')">+ Gemini</button>
+                    </div>
+                </div>
+                
+                <div class="agent-list" id="agent-list">
+                    <!-- Dynamic agent instances will appear here -->
+                </div>
+
+                <div class="fleet-controls">
+                    <button class="control-btn" onclick="killAllAgents()">
+                        <span>🛑</span> Stop All
+                    </button>
+                    <button class="control-btn" onclick="exportSession()">
+                        <span>💾</span> Export Session
+                    </button>
+                </div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="content-area">
+                <!-- Strategy AI Chat Panel -->
+                <div class="strategy-panel">
+                    <div class="panel-header">
+                        <h3>🎯 Strategy AI - Orchestration Command</h3>
+                        <div class="panel-controls">
+                            <button class="sync-btn" onclick="broadcastToAgents()">
+                                <span>📡</span> Broadcast to All
+                            </button>
+                        </div>
+                    </div>
+                    <div class="chat-container">
+                        <div class="chat-messages" id="strategy-messages">
+                            <div class="message system">
+                                <strong>System:</strong> Conductor Max initialized. Spawn agents to begin orchestration.
+                            </div>
+                        </div>
+                        <div class="chat-input">
+                            <textarea 
+                                id="strategy-input" 
+                                placeholder="Enter strategic directive..."
+                                rows="3"
+                            ></textarea>
+                            <button onclick="sendStrategyMessage()">Send</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Terminal Grid -->
+                <div class="terminal-grid" id="terminal-grid">
+                    <div class="grid-placeholder">
+                        <div class="placeholder-content">
+                            <span class="placeholder-icon">🚀</span>
+                            <h3>No Agents Active</h3>
+                            <p>Spawn Claude or Gemini agents to see their terminals here</p>
+                            <p class="auth-note">
+                                Agents use their native authentication:<br>
+                                • Claude: Browser auth or API key<br>
+                                • Gemini: Google account or API key
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Right Sidebar: Metrics -->
+            <aside class="metrics-sidebar">
+                <div class="metrics-panel">
+                    <h3>Session Metrics</h3>
+                    <div class="metric-item">
+                        <span class="metric-label">Session Duration</span>
+                        <span class="metric-value" id="session-duration">00:00:00</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Commands Sent</span>
+                        <span class="metric-value" id="total-commands">0</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-label">Active Agents</span>
+                        <span class="metric-value" id="agent-count">0</span>
+                    </div>
+                </div>
+
+                <div class="v-omega-philosophy">
+                    <h3>V-Omega Status</h3>
+                    <div class="philosophy-quote">
+                        "Multiple minds, unified purpose"
+                    </div>
+                    <div class="v-levels">
+                        <div class="v-level-item active">V1-V3: Execution</div>
+                        <div class="v-level-item">V4-V6: Strategy</div>
+                        <div class="v-level-item">V7-V10: Transcendent</div>
+                    </div>
+                </div>
+
+                <div class="help-panel">
+                    <h3>Quick Help</h3>
+                    <div class="help-item">
+                        <strong>Auth:</strong> Agents use native CLI auth
+                    </div>
+                    <div class="help-item">
+                        <strong>Ctrl+C:</strong> Interrupt agent command
+                    </div>
+                    <div class="help-item">
+                        <strong>Tab:</strong> Switch between terminals
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Agent Terminal Template -->
+    <template id="terminal-template">
+        <div class="terminal-container" data-agent-id="">
+            <div class="terminal-header">
+                <span class="terminal-title"></span>
+                <div class="terminal-controls">
+                    <button class="term-btn" onclick="clearTerminal(this)">Clear</button>
+                    <button class="term-btn" onclick="resizeTerminal(this)">↔</button>
+                    <button class="term-btn danger" onclick="killAgent(this)">✕</button>
+                </div>
+            </div>
+            <div class="terminal-body"></div>
+            <div class="terminal-status">
+                <span class="status-text">Initializing...</span>
+            </div>
+        </div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+    <script src="conductor-max.js"></script>
+</body>
+</html>
