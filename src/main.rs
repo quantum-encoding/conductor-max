@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Manager, WebviewWindowBuilder};
 use tracing::info;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -20,6 +20,7 @@ async fn spawn_agent(
     agent_type: String,
     api_key: String,
     agent_id: Option<String>,
+    workspace_path: Option<String>,
 ) -> Result<String, String> {
     let agent_type = match agent_type.as_str() {
         "claude" => AgentType::Claude,
@@ -31,7 +32,7 @@ async fn spawn_agent(
         agent_type,
         api_key,
         agent_id: agent_id.clone(),
-        workspace_path: None,
+        workspace_path,
     };
 
     state.orchestrator
@@ -49,6 +50,47 @@ async fn send_to_agent(
     state.orchestrator
         .send_command(&agent_id, &command)
         .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn send_raw_to_agent(
+    state: tauri::State<'_, AppState>,
+    agent_id: String,
+    data: Vec<u8>,
+) -> Result<(), String> {
+    let agent = state.orchestrator.agents.get(&agent_id)
+        .ok_or_else(|| format!("Agent {} not found", agent_id))?;
+    
+    agent.send_raw(&data).await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_agent_output(
+    state: tauri::State<'_, AppState>,
+    agent_id: String,
+) -> Result<Vec<u8>, String> {
+    let agent = state.orchestrator.agents.get(&agent_id)
+        .ok_or_else(|| format!("Agent {} not found", agent_id))?;
+    
+    match agent.get_output().await {
+        Some(data) => Ok(data),
+        None => Ok(Vec::new()),
+    }
+}
+
+#[tauri::command]
+async fn resize_agent_terminal(
+    state: tauri::State<'_, AppState>,
+    agent_id: String,
+    rows: u16,
+    cols: u16,
+) -> Result<(), String> {
+    let agent = state.orchestrator.agents.get(&agent_id)
+        .ok_or_else(|| format!("Agent {} not found", agent_id))?;
+    
+    agent.resize(rows, cols).await
         .map_err(|e| e.to_string())
 }
 
@@ -82,15 +124,59 @@ async fn list_agents(
 }
 
 #[tauri::command]
-async fn get_agent_output(
-    state: tauri::State<'_, AppState>,
+async fn open_strategy_window(
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    // Check if strategy window already exists
+    if app.get_webview_window("strategy").is_some() {
+        // Focus existing window
+        if let Some(window) = app.get_webview_window("strategy") {
+            window.set_focus().map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    
+    // Create new strategy window
+    let _window = WebviewWindowBuilder::new(&app, "strategy", 
+        tauri::WebviewUrl::App("strategy.html".into()))
+        .title("🎯 Strategy AI - Conductor Max")
+        .inner_size(800.0, 600.0)
+        .position(100.0, 100.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_agent_window(
+    app: tauri::AppHandle,
     agent_id: String,
-    lines: Option<usize>,
-) -> Result<Vec<String>, String> {
-    state.orchestrator
-        .get_agent_output(&agent_id, lines.unwrap_or(100))
-        .await
-        .map_err(|e| e.to_string())
+    agent_type: String,
+) -> Result<(), String> {
+    let window_id = format!("agent_{}", agent_id);
+    
+    // Check if window already exists
+    if app.get_webview_window(&window_id).is_some() {
+        // Focus existing window
+        if let Some(window) = app.get_webview_window(&window_id) {
+            window.set_focus().map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    
+    // Create new agent window
+    let url = format!("agent.html?id={}&type={}", agent_id, agent_type);
+    let _window = WebviewWindowBuilder::new(&app, &window_id, 
+        tauri::WebviewUrl::App(url.into()))
+        .title(format!("🤖 {} Agent - {}", agent_type.to_uppercase(), &agent_id[..8]))
+        .inner_size(1024.0, 768.0)
+        .resizable(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 fn main() {
@@ -114,16 +200,20 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             spawn_agent,
             send_to_agent,
+            send_raw_to_agent,
+            get_agent_output,
+            resize_agent_terminal,
             kill_agent,
             get_agent_status,
             list_agents,
-            get_agent_output,
+            open_strategy_window,
+            open_agent_window,
         ])
         .setup(|app| {
             let window = app.get_webview_window("main").unwrap();
             
             // Set up window event handlers
-            let app_handle = app.handle().clone();
+            let _app_handle = app.handle().clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
                     info!("Window close requested, cleaning up agents...");

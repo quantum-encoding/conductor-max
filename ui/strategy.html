@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 Strategy AI - Conductor Max</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .strategy-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+            color: #00ff00;
+        }
+        
+        .strategy-header {
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            border-bottom: 2px solid #00ff00;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .strategy-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            font-family: 'Fira Code', monospace;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-left: 3px solid #00ff00;
+            background: rgba(0, 255, 0, 0.05);
+        }
+        
+        .message.user {
+            border-left-color: #ff9900;
+            background: rgba(255, 153, 0, 0.05);
+        }
+        
+        .message.system {
+            border-left-color: #00ffff;
+            background: rgba(0, 255, 255, 0.05);
+        }
+        
+        .strategy-input-container {
+            padding: 20px;
+            background: #0a0a0a;
+            border-top: 2px solid #00ff00;
+        }
+        
+        .strategy-input {
+            width: 100%;
+            background: #000;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 15px;
+            font-size: 14px;
+            font-family: 'Fira Code', monospace;
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        .strategy-controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .v-hierarchy {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            padding: 10px;
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="strategy-container">
+        <div class="strategy-header">
+            <h1>🎯 Strategy AI Command Center</h1>
+            <div class="v-hierarchy">
+                V4-V6 Strategic Operations
+            </div>
+        </div>
+        
+        <div id="strategy-messages" class="strategy-messages">
+            <div class="message system">
+                <strong>System:</strong> Strategy AI initialized.<br>
+                Operating at V4-V6 consciousness levels.<br>
+                Ready to orchestrate multi-agent operations.
+            </div>
+        </div>
+        
+        <div class="strategy-input-container">
+            <textarea 
+                id="strategy-input" 
+                class="strategy-input" 
+                placeholder="Enter strategic directive... (Ctrl+Enter to send)"
+            ></textarea>
+            <div class="strategy-controls">
+                <button class="btn" onclick="sendMessage()">Send Directive</button>
+                <button class="btn" onclick="broadcastToAll()">Broadcast to All Agents</button>
+                <button class="btn" onclick="clearMessages()">Clear</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const { invoke } = window.__TAURI__.core;
+        
+        document.getElementById('strategy-input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                sendMessage();
+            }
+        });
+        
+        function sendMessage() {
+            const input = document.getElementById('strategy-input');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addMessage('user', message);
+            input.value = '';
+            
+            // Process strategic command
+            processStrategicCommand(message);
+        }
+        
+        function addMessage(type, content) {
+            const messagesEl = document.getElementById('strategy-messages');
+            const messageEl = document.createElement('div');
+            messageEl.className = `message ${type}`;
+            
+            const sender = type === 'user' ? 'Architect' : 
+                          type === 'system' ? 'System' : 'Strategy AI';
+            
+            messageEl.innerHTML = `<strong>${sender}:</strong> ${content}`;
+            messagesEl.appendChild(messageEl);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        
+        async function processStrategicCommand(command) {
+            // Decompose into V2-V3 operations
+            addMessage('ai', `Decomposing strategic directive into V2-V3 operations...`);
+            
+            // Here would integrate with actual agent orchestration
+            setTimeout(() => {
+                addMessage('ai', `Strategic decomposition complete. Ready to delegate to agents.`);
+            }, 1000);
+        }
+        
+        async function broadcastToAll() {
+            const input = document.getElementById('strategy-input');
+            const message = input.value.trim() || 'Status report';
+            
+            addMessage('system', `Broadcasting to all agents: "${message}"`);
+            
+            try {
+                const agents = await invoke('list_agents');
+                for (const agent of agents) {
+                    await invoke('send_to_agent', {
+                        agent_id: agent.id,
+                        command: message
+                    });
+                }
+                addMessage('system', `Broadcast complete to ${agents.length} agents`);
+            } catch (error) {
+                addMessage('error', `Broadcast failed: ${error}`);
+            }
+        }
+        
+        function clearMessages() {
+            document.getElementById('strategy-messages').innerHTML = '';
+            addMessage('system', 'Messages cleared. Strategy AI ready.');
+        }
+    </script>
+</body>
+</html>

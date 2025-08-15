@@ -16,7 +16,7 @@ use tracing::{info, error, debug};
 use uuid::Uuid;
 
 pub struct AgentOrchestrator {
-    agents: Arc<DashMap<String, Arc<AgentProcess>>>,
+    pub agents: Arc<DashMap<String, Arc<AgentProcess>>>,
     session: Arc<RwLock<SessionState>>,
     ipc_bridge: Arc<IpcBridge>,
 }
@@ -91,11 +91,11 @@ impl AgentOrchestrator {
         agents
     }
 
-    pub async fn get_agent_output(&self, agent_id: &str, lines: usize) -> Result<Vec<String>> {
+    pub async fn get_agent_output(&self, agent_id: &str) -> Result<Option<Vec<u8>>> {
         let agent = self.agents.get(agent_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not found", agent_id))?;
         
-        Ok(agent.get_output_buffer(lines).await)
+        Ok(agent.get_output().await)
     }
 
     pub async fn broadcast_to_strategy(&self, message: &str) -> Result<()> {

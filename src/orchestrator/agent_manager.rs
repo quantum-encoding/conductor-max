@@ -1,13 +1,13 @@
-// Agent Manager - Process spawning and management
+// Agent Manager - Real PTY terminal spawning and management
 use anyhow::Result;
+use portable_pty::{CommandBuilder, PtySize, native_pty_system, PtyPair};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fmt;
 use std::sync::Arc;
-use std::process::Stdio;
-use tokio::sync::{Mutex, RwLock};
-use tokio::process::Command;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use std::io::{Read, Write};
+use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::task;
 use tracing::{info, error, debug};
 use uuid::Uuid;
 
@@ -37,8 +37,10 @@ pub struct AgentConfig {
 pub struct AgentProcess {
     pub id: String,
     pub agent_type: AgentType,
-    child: Arc<Mutex<tokio::process::Child>>,
-    output_buffer: Arc<RwLock<Vec<String>>>,
+    pty_pair: Arc<Mutex<PtyPair>>,
+    writer: Arc<Mutex<Box<dyn Write + Send>>>,
+    output_sender: mpsc::Sender<Vec<u8>>,
+    output_receiver: Arc<Mutex<mpsc::Receiver<Vec<u8>>>>,
     status: Arc<RwLock<AgentStatus>>,
 }
 
@@ -60,25 +62,72 @@ impl AgentManager {
         let agent_id = config.agent_id.clone()
             .unwrap_or_else(|| Uuid::new_v4().to_string());
         
-        info!("Spawning {} agent (ID: {})", config.agent_type, agent_id);
+        info!("Spawning {} agent (ID: {}) with real PTY", config.agent_type, agent_id);
         
-        // Build command using tokio::process instead of PTY for simplicity
-        let mut cmd = Command::new(config.agent_type.to_string());
+        // Create PTY system
+        let pty_system = native_pty_system();
         
-        // Set up pipes for stdin/stdout/stderr
-        cmd.stdin(Stdio::piped())
-           .stdout(Stdio::piped())
-           .stderr(Stdio::piped());
+        // Create PTY pair with size
+        let pty_pair = pty_system.openpty(PtySize {
+            rows: 24,
+            cols: 80,
+            pixel_width: 0,
+            pixel_height: 0,
+        })?;
+        
+        // Build command - use the actual CLI commands
+        let mut cmd = CommandBuilder::new(config.agent_type.to_string());
         
         // Add workspace path if specified
         if let Some(workspace) = &config.workspace_path {
-            cmd.current_dir(workspace);
+            cmd.cwd(workspace);
         }
         
-        // No need to pass API keys - claude and gemini CLIs handle their own auth
+        // Set environment for better terminal compatibility
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("COLORTERM", "truecolor");
         
-        // Spawn the process
-        let mut child = cmd.spawn()?;
+        // The CLIs handle their own auth - no API keys needed
+        
+        // Spawn the child process
+        let _child = pty_pair.slave.spawn_command(cmd)?;
+        info!("Spawned {} process", config.agent_type);
+        
+        // Get writer for sending input
+        let writer = pty_pair.master.take_writer()?;
+        
+        // Create channel for output streaming
+        let (output_sender, output_receiver) = mpsc::channel::<Vec<u8>>(100);
+        
+        // Start reader task for PTY output
+        let mut reader = pty_pair.master.try_clone_reader()?;
+        let sender_clone = output_sender.clone();
+        let agent_type_str = config.agent_type.to_string();
+        let agent_id_clone = agent_id.clone();
+        
+        // Spawn blocking reader in separate task
+        task::spawn_blocking(move || {
+            let mut buffer = [0u8; 4096];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) => {
+                        info!("PTY for {} agent {} closed", agent_type_str, agent_id_clone);
+                        break;
+                    }
+                    Ok(n) => {
+                        let data = buffer[..n].to_vec();
+                        if let Err(e) = sender_clone.blocking_send(data) {
+                            error!("Failed to send PTY output: {}", e);
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading PTY: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
         
         let status = Arc::new(RwLock::new(AgentStatus {
             id: agent_id.clone(),
@@ -90,75 +139,13 @@ impl AgentManager {
             workspace: config.workspace_path.clone(),
         }));
         
-        let output_buffer = Arc::new(RwLock::new(Vec::new()));
-        
-        // Start output reader task for stdout
-        if let Some(stdout) = child.stdout.take() {
-            let buffer_clone = output_buffer.clone();
-            let status_clone = status.clone();
-            
-            tokio::spawn(async move {
-                let mut reader = BufReader::new(stdout);
-                let mut line = String::new();
-                
-                loop {
-                    match reader.read_line(&mut line).await {
-                        Ok(0) => {
-                            info!("Agent stdout stream ended");
-                            break;
-                        }
-                        Ok(_) => {
-                            // Update buffer
-                            let mut buffer = buffer_clone.write().await;
-                            buffer.push(line.clone());
-                            
-                            // Keep buffer size reasonable
-                            if buffer.len() > 10000 {
-                                buffer.drain(0..1000);
-                            }
-                            
-                            // Update last activity
-                            status_clone.write().await.last_activity = chrono::Utc::now();
-                            
-                            line.clear();
-                        }
-                        Err(e) => {
-                            error!("Error reading agent stdout: {}", e);
-                            break;
-                        }
-                    }
-                }
-            });
-        }
-        
-        // Start output reader task for stderr
-        if let Some(stderr) = child.stderr.take() {
-            let buffer_clone = output_buffer.clone();
-            
-            tokio::spawn(async move {
-                let mut reader = BufReader::new(stderr);
-                let mut line = String::new();
-                
-                loop {
-                    match reader.read_line(&mut line).await {
-                        Ok(0) => break,
-                        Ok(_) => {
-                            // Prefix stderr lines
-                            let mut buffer = buffer_clone.write().await;
-                            buffer.push(format!("[stderr] {}", line));
-                            line.clear();
-                        }
-                        Err(_) => break,
-                    }
-                }
-            });
-        }
-        
         Ok(AgentProcess {
             id: agent_id,
             agent_type: config.agent_type,
-            child: Arc::new(Mutex::new(child)),
-            output_buffer,
+            pty_pair: Arc::new(Mutex::new(pty_pair)),
+            writer: Arc::new(Mutex::new(writer)),
+            output_sender,
+            output_receiver: Arc::new(Mutex::new(output_receiver)),
             status,
         })
     }
@@ -166,30 +153,59 @@ impl AgentManager {
 
 impl AgentProcess {
     pub async fn send_command(&self, command: &str) -> Result<()> {
-        let mut child = self.child.lock().await;
+        let mut writer = self.writer.lock().await;
         
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.write_all(format!("{}\n", command).as_bytes()).await?;
-            stdin.flush().await?;
-            
-            // Update status
-            let mut status = self.status.write().await;
-            status.commands_sent += 1;
-            status.last_activity = chrono::Utc::now();
-            
-            debug!("Sent command to agent {}: {}", self.id, command);
-        } else {
-            return Err(anyhow::anyhow!("Agent stdin not available"));
-        }
+        // Send command with newline
+        writer.write_all(format!("{}\n", command).as_bytes())?;
+        writer.flush()?;
         
+        // Update status
+        let mut status = self.status.write().await;
+        status.commands_sent += 1;
+        status.last_activity = chrono::Utc::now();
+        
+        debug!("Sent command to agent {}: {}", self.id, command);
         Ok(())
+    }
+    
+    pub async fn send_raw(&self, data: &[u8]) -> Result<()> {
+        let mut writer = self.writer.lock().await;
+        writer.write_all(data)?;
+        writer.flush()?;
+        
+        // Update activity
+        self.status.write().await.last_activity = chrono::Utc::now();
+        Ok(())
+    }
+    
+    pub async fn resize(&self, rows: u16, cols: u16) -> Result<()> {
+        let pty_pair = self.pty_pair.lock().await;
+        pty_pair.master.resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })?;
+        info!("Resized PTY for agent {} to {}x{}", self.id, cols, rows);
+        Ok(())
+    }
+    
+    pub async fn get_output(&self) -> Option<Vec<u8>> {
+        let mut receiver = self.output_receiver.lock().await;
+        receiver.recv().await
     }
     
     pub async fn kill(&self) -> Result<()> {
         info!("Killing agent {}", self.id);
         
-        let mut child = self.child.lock().await;
-        child.kill().await?;
+        // Send Ctrl+C first to try graceful shutdown
+        self.send_raw(b"\x03").await.ok();
+        
+        // Wait a bit
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        
+        // Send Ctrl+D to PTY
+        self.send_raw(b"\x04").await.ok();
         
         let mut status = self.status.write().await;
         status.running = false;
@@ -209,26 +225,16 @@ impl AgentProcess {
             "workspace": status.workspace,
         })
     }
-    
-    pub async fn get_output_buffer(&self, lines: usize) -> Vec<String> {
-        let buffer = self.output_buffer.read().await;
-        let start = if buffer.len() > lines {
-            buffer.len() - lines
-        } else {
-            0
-        };
-        buffer[start..].to_vec()
-    }
 }
 
 impl Drop for AgentProcess {
     fn drop(&mut self) {
         // Best effort cleanup
-        let child = self.child.clone();
         let id = self.id.clone();
+        let writer = self.writer.clone();
         tokio::spawn(async move {
-            let mut c = child.lock().await;
-            let _ = c.kill().await;
+            let mut w = writer.lock().await;
+            let _ = w.write_all(b"\x04"); // Ctrl+D
             info!("Cleaned up agent {}", id);
         });
     }

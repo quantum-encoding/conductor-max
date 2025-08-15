@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Terminal</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .agent-header {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            border-bottom: 2px solid #00ff00;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .agent-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        
+        .agent-status {
+            display: flex;
+            gap: 10px;
+            font-size: 14px;
+        }
+        
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #00ff00;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        #terminal {
+            flex: 1;
+            padding: 10px;
+        }
+        
+        .terminal-controls {
+            padding: 10px;
+            background: #0a0a0a;
+            border-top: 1px solid #00ff00;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .workspace-indicator {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            padding: 5px 10px;
+            background: rgba(0, 255, 0, 0.1);
+            border: 1px solid #00ff00;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="agent-header">
+        <div class="agent-info">
+            <h2 id="agent-title">Agent Terminal</h2>
+            <div class="agent-status">
+                <div class="status-indicator"></div>
+                <span id="status-text">Connecting...</span>
+            </div>
+        </div>
+        <div class="workspace-indicator" id="workspace">
+            Workspace: /
+        </div>
+    </div>
+    
+    <div id="terminal"></div>
+    
+    <div class="terminal-controls">
+        <button class="btn" onclick="clearTerminal()">Clear</button>
+        <button class="btn" onclick="interruptAgent()">Interrupt (Ctrl+C)</button>
+        <button class="btn" onclick="setWorkspace()">Set Workspace</button>
+        <button class="btn" onclick="window.close()">Close</button>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+    <script>
+        const { invoke } = window.__TAURI__.core;
+        
+        // Get agent info from URL params
+        const params = new URLSearchParams(window.location.search);
+        const agentId = params.get('id');
+        const agentType = params.get('type');
+        
+        // Update title
+        document.getElementById('agent-title').textContent = 
+            `${agentType.toUpperCase()} Agent - ${agentId.slice(0, 8)}`;
+        
+        // Initialize terminal
+        const term = new Terminal({
+            cursorBlink: true,
+            fontSize: 14,
+            fontFamily: 'Fira Code, monospace',
+            theme: {
+                background: '#000000',
+                foreground: agentType === 'claude' ? '#ff9900' : '#00aaff',
+                cursor: agentType === 'claude' ? '#ff9900' : '#00aaff',
+                selection: 'rgba(255, 255, 255, 0.3)',
+            }
+        });
+        
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        
+        term.open(document.getElementById('terminal'));
+        fitAddon.fit();
+        
+        // Handle resize
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+            invoke('resize_agent_terminal', {
+                agent_id: agentId,
+                rows: term.rows,
+                cols: term.cols
+            });
+        });
+        
+        // Handle input
+        term.onData(data => {
+            // Convert string to bytes array
+            const bytes = new TextEncoder().encode(data);
+            invoke('send_raw_to_agent', {
+                agent_id: agentId,
+                data: Array.from(bytes)
+            });
+        });
+        
+        // Start output streaming
+        async function streamOutput() {
+            while (true) {
+                try {
+                    const output = await invoke('get_agent_output', {
+                        agent_id: agentId
+                    });
+                    
+                    if (output && output.length > 0) {
+                        // Convert bytes to string
+                        const text = new TextDecoder().decode(new Uint8Array(output));
+                        term.write(text);
+                        
+                        // Update status
+                        document.getElementById('status-text').textContent = 'Connected';
+                    }
+                } catch (error) {
+                    console.error('Output stream error:', error);
+                    document.getElementById('status-text').textContent = 'Error';
+                    break;
+                }
+                
+                // Small delay to prevent overwhelming
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        }
+        
+        // Start streaming
+        streamOutput();
+        
+        // Control functions
+        function clearTerminal() {
+            term.clear();
+        }
+        
+        function interruptAgent() {
+            invoke('send_raw_to_agent', {
+                agent_id: agentId,
+                data: [0x03] // Ctrl+C
+            });
+        }
+        
+        async function setWorkspace() {
+            const path = prompt('Enter workspace path:');
+            if (path) {
+                document.getElementById('workspace').textContent = `Workspace: ${path}`;
+                // Send cd command
+                const command = `cd ${path}\n`;
+                const bytes = new TextEncoder().encode(command);
+                await invoke('send_raw_to_agent', {
+                    agent_id: agentId,
+                    data: Array.from(bytes)
+                });
+            }
+        }
+        
+        // Initial message
+        term.writeln(`🔱 ${agentType.toUpperCase()} Agent Terminal`);
+        term.writeln(`ID: ${agentId}`);
+        term.writeln('─'.repeat(50));
+        term.writeln('');
+        
+        if (agentType === 'claude') {
+            term.writeln('Starting Claude CLI...');
+            term.writeln('Authentication will use your existing Claude setup.');
+        } else if (agentType === 'gemini') {
+            term.writeln('Starting Gemini CLI...');
+            term.writeln('Authentication will use your Google account or API key.');
+        }
+        
+        term.writeln('');
+    </script>
+</body>
+</html>
