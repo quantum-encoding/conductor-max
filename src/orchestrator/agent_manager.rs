@@ -87,6 +87,14 @@ impl AgentManager {
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         
+        // Ensure CLIs are in PATH (for Node.js installed tools)
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        let node_bin_path = std::env::var("HOME")
+            .map(|home| format!("{}/.nvm/versions/node/v22.15.0/bin", home))
+            .unwrap_or_default();
+        let enhanced_path = format!("{}:{}", node_bin_path, current_path);
+        cmd.env("PATH", enhanced_path);
+        
         // The CLIs handle their own auth - no API keys needed
         
         // Spawn the child process
