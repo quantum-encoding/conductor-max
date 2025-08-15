@@ -3,431 +3,470 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🔱 Conductor Max - AI Orchestration Platform</title>
+    <title>🔱 Conductor Max - Terminal Container</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <link rel="stylesheet" href="https://unpkg.com/xterm@5.3.0/css/xterm.css">
+    <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://unpkg.com/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
 </head>
 <body>
-    <div id="app">
-        <!-- Top Bar -->
-        <header class="top-bar">
-            <div class="logo">
-                <span class="logo-icon">🔱</span>
-                <span class="logo-text">CONDUCTOR MAX</span>
-                <span class="logo-subtitle">Quantum Encoding Ltd</span>
-            </div>
-            <div class="status-bar">
-                <div class="agent-count">
-                    <span class="count-icon">🤖</span>
-                    <span id="active-agents">0</span> Active Agents
-                </div>
-                <div class="connection-status" id="connection-status">
-                    <span class="status-dot online"></span>
-                    <span>Orchestrator Ready</span>
-                </div>
-            </div>
-        </header>
-
-        <div class="main-container">
-            <!-- Left Sidebar: Agent Status -->
-            <aside class="agent-sidebar">
-                <div class="sidebar-header">
-                    <h3>Agent Fleet</h3>
-                    <div class="agent-controls">
-                        <button class="spawn-btn claude" onclick="spawnAgent('claude')">+ Claude</button>
-                        <button class="spawn-btn gemini" onclick="spawnAgent('gemini')">+ Gemini</button>
-                    </div>
-                </div>
-                
-                <div class="agent-list" id="agent-list">
-                    <!-- Dynamic agent instances will appear here -->
-                </div>
-
-                <div class="fleet-controls">
-                    <button class="control-btn" onclick="killAllAgents()">
-                        <span>🛑</span> Stop All
-                    </button>
-                    <button class="control-btn" onclick="exportSession()">
-                        <span>💾</span> Export Session
-                    </button>
-                </div>
-            </aside>
-
-            <!-- Main Content Area: Strategy AI Chat -->
-            <main class="content-area">
-                <!-- Strategy AI Chat Panel -->
-                <div class="strategy-panel">
-                    <div class="panel-header">
-                        <h3>🎯 Strategy AI - V4-V6 Orchestration Command</h3>
-                        <div class="panel-controls">
-                            <button class="sync-btn" onclick="broadcastToAgents()">
-                                <span>📡</span> Broadcast to All
-                            </button>
-                            <div class="v-level-indicator">V4-V6</div>
-                        </div>
-                    </div>
-                    <div class="chat-container">
-                        <div class="chat-messages" id="strategy-messages">
-                            <div class="message system">
-                                <strong>System:</strong> Strategy AI initialized. Spawn agents to begin orchestration.
-                                <div class="message-meta">V-Omega Prime Protocol Active</div>
-                            </div>
-                        </div>
-                        <div class="chat-input-container">
-                            <div class="chat-input">
-                                <textarea 
-                                    id="strategy-input" 
-                                    placeholder="Enter strategic directive... (Ctrl+Enter to send)"
-                                    rows="3"
-                                ></textarea>
-                                <div class="input-controls">
-                                    <button class="send-btn" onclick="sendStrategyMessage()">
-                                        <span>📤</span> Send Directive
-                                    </button>
-                                    <button class="clear-btn" onclick="clearChat()">
-                                        <span>🗑️</span> Clear
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </main>
+    <!-- Header -->
+    <div class="header">
+        <div class="logo">
+            <div class="logo-icon">🔱</div>
+            <h1>Conductor Max</h1>
+            <div class="subtitle">Terminal Container</div>
         </div>
+        <div class="header-controls">
+            <button class="btn btn-primary" onclick="createNewTerminal()">
+                <span class="btn-icon">➕</span>
+                New Terminal
+            </button>
+            <div class="status-indicator">
+                <div class="status-dot active"></div>
+                <span id="terminal-count">0 terminals</span>
+            </div>
+        </div>
+    </div>
 
-        <!-- Session Metrics Footer -->
-        <footer class="session-metrics">
-            <div class="metric">
-                <span class="metric-value" id="session-duration">00:00:00</span>
-                <span class="metric-label">Session Duration</span>
+    <!-- Terminal Tabs -->
+    <div class="terminal-tabs" id="terminal-tabs">
+        <!-- Tabs will be inserted here -->
+    </div>
+
+    <!-- Terminal Container -->
+    <div class="terminal-container" id="terminal-container">
+        <div class="welcome-screen" id="welcome-screen">
+            <div class="welcome-content">
+                <div class="welcome-icon">🔱</div>
+                <h2>Welcome to Conductor Max</h2>
+                <p>Professional terminal container for AI orchestration</p>
+                <button class="btn btn-primary btn-large" onclick="createNewTerminal()">
+                    <span class="btn-icon">⚡</span>
+                    Start Your First Terminal
+                </button>
             </div>
-            <div class="metric">
-                <span class="metric-value" id="total-commands">0</span>
-                <span class="metric-label">Commands Sent</span>
-            </div>
-            <div class="metric">
-                <span class="metric-value" id="active-processes">0</span>
-                <span class="metric-label">Active Processes</span>
-            </div>
-            <div class="v-omega-footer">
-                <span>"Multiple minds, unified purpose"</span>
-                <span class="duck-wisdom">🦆 The ducks observe</span>
-            </div>
-        </footer>
+        </div>
     </div>
     
-    <script src="conductor-max.js"></script>
     <script>
-        const { invoke } = window.__TAURI__.core;
+        // 🔱 Conductor Max Terminal Container
         
-        let agents = new Map();
-        let sessionStartTime = Date.now();
-        let totalCommands = 0;
-        let selectedAgentId = null; // Track which agent is selected for chat
+        // Tauri API - CORRECT initialization pattern for v2
+        let invoke;
         
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('🔱 Conductor Max initializing...');
-            initializeEventListeners();
-            startMetricsUpdater();
-            
-            addStrategyMessage('system', `Welcome to Conductor Max!
-            
-Strategy AI operating at V4-V6 consciousness levels.
-Spawn Claude or Gemini agents to begin multi-mind orchestration.
-
-Authentication flows:
-• Claude: Browser-based auth or API key from ~/.config/claude
-• Gemini: Google account auth or API key
-
-Ready for strategic operations.`);
-        });
+        // Terminal Management
+        let terminals = new Map();
+        let activeTerminalId = null;
+        let terminalCounter = 0;
         
-        function initializeEventListeners() {
-            const strategyInput = document.getElementById('strategy-input');
-            strategyInput?.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && e.ctrlKey) {
-                    sendStrategyMessage();
-                }
-            });
-        }
+        // XTerm.js addons - check for correct namespace
+        const FitAddon = typeof window !== 'undefined' && window.FitAddon ? window.FitAddon : null;
+        const WebLinksAddon = typeof window !== 'undefined' && window.WebLinksAddon ? window.WebLinksAddon : null;
         
-        // Spawn new agent
-        async function spawnAgent(type) {
-            try {
-                console.log(`Spawning ${type} agent...`);
-                
-                // Get workspace path (optional)
-                const workspace = prompt(`Enter workspace path for ${type} agent (optional):`);
-                
-                const agentId = await invoke('spawn_agent', {
-                    agent_type: type,
-                    api_key: '', // Not needed - native auth
-                    agent_id: null,
-                    workspace_path: workspace || null
-                });
-                
-                console.log(`Agent spawned: ${agentId}`);
-                
-                // Store agent info
-                const agent = {
-                    id: agentId,
-                    type: type,
-                    startTime: Date.now(),
-                    status: 'running',
-                    workspace: workspace || '~'
-                };
-                
-                agents.set(agentId, agent);
-                
-                // Add to sidebar
-                addAgentToSidebar(agent);
-                
-                // Update metrics
-                updateMetrics();
-                
-                addStrategyMessage('system', `✅ ${type.toUpperCase()} agent spawned (ID: ${agentId.slice(0, 8)})`);
-                
-            } catch (error) {
-                console.error(`Failed to spawn ${type} agent:`, error);
-                addStrategyMessage('error', `Failed to spawn ${type} agent: ${error}`);
-            }
-        }
-        
-        function addAgentToSidebar(agent) {
-            const agentList = document.getElementById('agent-list');
-            
-            const agentEl = document.createElement('div');
-            agentEl.className = `agent-instance ${agent.type}`;
-            agentEl.dataset.agentId = agent.id;
-            agentEl.innerHTML = `
-                <div class="agent-header" onclick="selectAgent('${agent.id}')">
-                    <div class="agent-info">
-                        <span class="agent-name">${agent.type.toUpperCase()}</span>
-                        <span class="agent-id">${agent.id.slice(0, 8)}</span>
-                    </div>
-                    <span class="agent-status running">●</span>
-                </div>
-                <div class="agent-details">
-                    <div class="agent-workspace">📁 ${agent.workspace}</div>
-                    <div class="agent-time">⏱️ ${new Date(agent.startTime).toLocaleTimeString()}</div>
-                </div>
-                <div class="agent-actions">
-                    <button class="action-btn" onclick="openAgentTerminal('${agent.id}', '${agent.type}')">
-                        🖥️ Terminal
-                    </button>
-                    <button class="action-btn danger" onclick="killAgent('${agent.id}')">
-                        🛑 Stop
-                    </button>
-                </div>
-            `;
-            
-            agentList.appendChild(agentEl);
-        }
-        
-        function selectAgent(agentId) {
-            // Remove previous selection
-            document.querySelectorAll('.agent-instance').forEach(el => {
-                el.classList.remove('selected');
-            });
-            
-            // Select new agent
-            const agentEl = document.querySelector(`[data-agent-id="${agentId}"]`);
-            if (agentEl) {
-                agentEl.classList.add('selected');
-                selectedAgentId = agentId;
-                
-                const agent = agents.get(agentId);
-                addStrategyMessage('system', `Selected ${agent.type.toUpperCase()} agent for direct communication.`);
-            }
-        }
-        
-        async function openAgentTerminal(agentId, agentType) {
-            try {
-                await invoke('open_agent_window', {
-                    agent_id: agentId,
-                    agent_type: agentType
-                });
-            } catch (error) {
-                console.error('Failed to open agent terminal:', error);
-                addStrategyMessage('error', `Failed to open terminal: ${error}`);
-            }
-        }
-        
-        function sendStrategyMessage() {
-            const input = document.getElementById('strategy-input');
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            addStrategyMessage('user', message);
-            input.value = '';
-            
-            // Process strategic command
-            processStrategyCommand(message);
-        }
-        
-        function addStrategyMessage(type, content) {
-            const messagesEl = document.getElementById('strategy-messages');
-            const messageEl = document.createElement('div');
-            messageEl.className = `message ${type}`;
-            
-            const sender = type === 'user' ? 'Architect' : 
-                          type === 'system' ? 'System' : 
-                          type === 'error' ? 'Error' : 'Strategy AI';
-            
-            const timestamp = new Date().toLocaleTimeString();
-            
-            messageEl.innerHTML = `
-                <div class="message-header">
-                    <strong class="message-sender">${sender}</strong>
-                    <span class="message-timestamp">${timestamp}</span>
-                </div>
-                <div class="message-content">${content}</div>
-            `;
-            
-            messagesEl.appendChild(messageEl);
-            messagesEl.scrollTop = messagesEl.scrollHeight;
-        }
-        
-        async function processStrategyCommand(command) {
-            if (selectedAgentId && agents.has(selectedAgentId)) {
-                // Send directly to selected agent
-                const agent = agents.get(selectedAgentId);
-                addStrategyMessage('ai', `Routing command to ${agent.type.toUpperCase()} agent...`);
-                
-                try {
-                    await invoke('send_to_agent', {
-                        agent_id: selectedAgentId,
-                        command: command
-                    });
-                    totalCommands++;
-                    updateMetrics();
-                    addStrategyMessage('ai', `✓ Command sent to ${agent.type.toUpperCase()}`);
-                } catch (error) {
-                    addStrategyMessage('error', `Failed to send command: ${error}`);
-                }
-            } else if (agents.size > 0) {
-                // Broadcast to all agents
-                addStrategyMessage('ai', 'Broadcasting strategic directive to all agents...');
-                await broadcastToAgents(command);
+        // Initialize Tauri API - CORRECT for v2.x
+        function initializeTauri() {
+            if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
+                invoke = window.__TAURI__.core.invoke;
+                console.log('✅ Tauri v2 API initialized correctly');
+                return true;
             } else {
-                addStrategyMessage('ai', 'No active agents. Spawn an agent to begin orchestration.');
+                console.warn('⚠️ Tauri API not available yet');
+                return false;
             }
         }
         
-        async function broadcastToAgents(message) {
-            const input = document.getElementById('strategy-input');
-            const cmd = message || input.value.trim() || 'Status check';
+        // Terminal Management Functions
+        async function createNewTerminal() {
+            console.log('🔱 createNewTerminal() called');
             
-            if (message) {
-                // Clear input if message was provided
-                input.value = '';
+            if (!invoke) {
+                console.error('❌ Tauri API not available');
+                alert('Tauri API not available. Check console for details.');
+                return;
             }
-            
-            let successCount = 0;
-            for (const [agentId, agent] of agents) {
-                try {
-                    await invoke('send_to_agent', {
-                        agent_id: agentId,
-                        command: cmd
-                    });
-                    successCount++;
-                    totalCommands++;
-                } catch (error) {
-                    console.error(`Failed to send to agent ${agentId}:`, error);
-                }
-            }
-            
-            addStrategyMessage('system', `📡 Broadcast complete: ${successCount}/${agents.size} agents received command`);
-            updateMetrics();
-        }
-        
-        async function killAgent(agentId) {
-            const agent = agents.get(agentId);
-            if (!confirm(`Stop ${agent.type.toUpperCase()} agent ${agentId.slice(0, 8)}?`)) return;
             
             try {
-                await invoke('kill_agent', { agent_id: agentId });
+                terminalCounter++;
+                const terminalId = `terminal-${terminalCounter}`;
+                const terminalName = `Terminal ${terminalCounter}`;
                 
-                // Remove from UI
-                agents.delete(agentId);
-                document.querySelector(`[data-agent-id="${agentId}"]`)?.remove();
+                console.log(`🔱 Creating new terminal: ${terminalId}`);
                 
-                if (selectedAgentId === agentId) {
-                    selectedAgentId = null;
-                }
+                // Spawn PTY terminal via Tauri
+                const agentId = await invoke('spawn_agent', {
+                    agentType: 'bash',
+                    apiKey: '',
+                    agentId: terminalId,
+                    workspacePath: null
+                });
                 
-                updateMetrics();
-                addStrategyMessage('system', `Agent ${agentId.slice(0, 8)} terminated`);
+                console.log(`✅ PTY spawned with ID: ${agentId}`);
+                
+                // Create terminal UI
+                createTerminalUI(terminalId, terminalName, agentId);
+                
+                // Initialize XTerm
+                initializeXTerm(terminalId, agentId);
+                
+                // Switch to new terminal
+                switchToTerminal(terminalId);
+                
+                updateTerminalCount();
+                hideWelcomeScreen();
                 
             } catch (error) {
-                console.error('Failed to kill agent:', error);
-                addStrategyMessage('error', `Failed to terminate agent: ${error}`);
+                console.error('❌ Failed to create terminal:', error);
+                showNotification('Failed to create terminal: ' + error, 'error');
             }
         }
         
-        async function killAllAgents() {
-            if (!confirm('Stop all active agents?')) return;
+        function createTerminalUI(terminalId, terminalName, agentId) {
+            // Create tab
+            const tabsContainer = document.getElementById('terminal-tabs');
+            const tab = document.createElement('div');
+            tab.className = 'terminal-tab';
+            tab.id = `tab-${terminalId}`;
+            tab.onclick = () => switchToTerminal(terminalId);
             
-            for (const [agentId] of agents) {
+            tab.innerHTML = `
+                <span class="terminal-tab-icon">⚡</span>
+                <span class="terminal-tab-title">${terminalName}</span>
+                <span class="terminal-tab-close" onclick="event.stopPropagation(); closeTerminal('${terminalId}')">×</span>
+            `;
+            
+            tabsContainer.appendChild(tab);
+            
+            // Create terminal instance
+            const container = document.getElementById('terminal-container');
+            const instance = document.createElement('div');
+            instance.className = 'terminal-instance';
+            instance.id = `instance-${terminalId}`;
+            
+            instance.innerHTML = `
+                <div class="terminal-wrapper">
+                    <div class="terminal-loading">Loading terminal...</div>
+                    <div class="xterm-container" id="xterm-${terminalId}" style="display: none; width: 100%; height: 100%;"></div>
+                </div>
+            `;
+            
+            container.appendChild(instance);
+            
+            // Store terminal data
+            terminals.set(terminalId, {
+                id: terminalId,
+                name: terminalName,
+                agentId: agentId,
+                xterm: null,
+                fitAddon: null,
+                active: false
+            });
+        }
+        
+        function initializeXTerm(terminalId, agentId) {
+            const terminalData = terminals.get(terminalId);
+            if (!terminalData) return;
+            
+            try {
+                // Create XTerm instance
+                const xterm = new Terminal({
+                    fontFamily: '"Fira Code", "SF Mono", Monaco, "Cascadia Code", monospace',
+                    fontSize: 14,
+                    lineHeight: 1.4,
+                    cursorBlink: true,
+                    cursorStyle: 'block',
+                    theme: {
+                        background: 'hsl(220, 20%, 8%)',
+                        foreground: 'hsl(220, 15%, 90%)',
+                        cursor: 'hsl(25, 20%, 55%)',
+                        selection: 'hsla(25, 20%, 55%, 0.3)',
+                        black: '#2e3440',
+                        red: '#bf616a',
+                        green: '#a3be8c',
+                        yellow: '#ebcb8b',
+                        blue: '#81a1c1',
+                        magenta: '#b48ead',
+                        cyan: '#88c0d0',
+                        white: '#e5e9f0',
+                        brightBlack: '#4c566a',
+                        brightRed: '#bf616a',
+                        brightGreen: '#a3be8c',
+                        brightYellow: '#ebcb8b',
+                        brightBlue: '#81a1c1',
+                        brightMagenta: '#b48ead',
+                        brightCyan: '#8fbcbb',
+                        brightWhite: '#eceff4'
+                    }
+                });
+                
+                // Create and load addons
+                let fitAddon = null;
                 try {
-                    await invoke('kill_agent', { agent_id: agentId });
+                    if (FitAddon) {
+                        fitAddon = new FitAddon();
+                        xterm.loadAddon(fitAddon);
+                        console.log('✅ FitAddon loaded');
+                    } else {
+                        console.warn('⚠️ FitAddon not available');
+                    }
                 } catch (error) {
-                    console.error(`Failed to kill agent ${agentId}:`, error);
+                    console.error('❌ FitAddon error:', error);
                 }
+                
+                try {
+                    if (WebLinksAddon) {
+                        const webLinksAddon = new WebLinksAddon();
+                        xterm.loadAddon(webLinksAddon);
+                        console.log('✅ WebLinksAddon loaded');
+                    } else {
+                        console.warn('⚠️ WebLinksAddon not available');
+                    }
+                } catch (error) {
+                    console.error('❌ WebLinksAddon error:', error);
+                }
+                
+                // Open terminal in container
+                const container = document.getElementById(`xterm-${terminalId}`);
+                xterm.open(container);
+                
+                // Fit to container
+                if (fitAddon) {
+                    setTimeout(() => fitAddon.fit(), 100);
+                }
+                
+                // Handle user input
+                xterm.onData(data => {
+                    if (invoke && agentId) {
+                        sendToTerminal(agentId, data);
+                    }
+                });
+                
+                // Update terminal data
+                terminalData.xterm = xterm;
+                terminalData.fitAddon = fitAddon;
+                
+                // Start output polling
+                startOutputPolling(terminalId, agentId, xterm);
+                
+                // Hide loading, show terminal
+                const loadingEl = container.parentElement.querySelector('.terminal-loading');
+                if (loadingEl) loadingEl.style.display = 'none';
+                container.style.display = 'block';
+                
+                console.log(`✅ XTerm initialized for ${terminalId}`);
+                
+            } catch (error) {
+                console.error('❌ Failed to initialize XTerm:', error);
+                showNotification('Failed to initialize terminal UI: ' + error, 'error');
             }
-            
-            agents.clear();
-            selectedAgentId = null;
-            document.getElementById('agent-list').innerHTML = '';
-            updateMetrics();
-            addStrategyMessage('system', 'All agents terminated');
         }
         
-        async function exportSession() {
-            const sessionData = {
-                startTime: sessionStartTime,
-                duration: Date.now() - sessionStartTime,
-                agents: Array.from(agents.values()),
-                totalCommands: totalCommands,
-                timestamp: new Date().toISOString()
+        async function sendToTerminal(agentId, data) {
+            if (!invoke) return;
+            
+            try {
+                // Convert string to bytes for raw sending
+                const encoder = new TextEncoder();
+                const bytes = Array.from(encoder.encode(data));
+                
+                await invoke('send_raw_to_agent', {
+                    agentId: agentId,
+                    data: bytes
+                });
+            } catch (error) {
+                console.error('❌ Failed to send to terminal:', error);
+            }
+        }
+        
+        function startOutputPolling(terminalId, agentId, xterm) {
+            const pollOutput = async () => {
+                if (!invoke || !terminals.has(terminalId)) return;
+                
+                try {
+                    const output = await invoke('get_agent_output', {
+                        agentId: agentId
+                    });
+                    
+                    if (output && output.length > 0) {
+                        // Convert bytes back to string
+                        const decoder = new TextDecoder();
+                        const text = decoder.decode(new Uint8Array(output));
+                        xterm.write(text);
+                    }
+                } catch (error) {
+                    // Suppress frequent polling errors
+                    if (error.toString().includes('Agent') && error.toString().includes('not found')) {
+                        // Terminal was likely closed
+                        return;
+                    }
+                    console.debug('Output polling error:', error);
+                }
+                
+                // Continue polling if terminal is still active
+                if (terminals.has(terminalId)) {
+                    setTimeout(pollOutput, 50); // 20 FPS polling
+                }
             };
             
-            const blob = new Blob([JSON.stringify(sessionData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `conductor-max-session-${Date.now()}.json`;
-            a.click();
+            setTimeout(pollOutput, 100);
+        }
+        
+        function switchToTerminal(terminalId) {
+            // Update active terminal
+            activeTerminalId = terminalId;
             
-            addStrategyMessage('system', 'Session data exported');
+            // Update tabs
+            document.querySelectorAll('.terminal-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`tab-${terminalId}`)?.classList.add('active');
+            
+            // Update instances
+            document.querySelectorAll('.terminal-instance').forEach(instance => {
+                instance.classList.remove('active');
+            });
+            document.getElementById(`instance-${terminalId}`)?.classList.add('active');
+            
+            // Focus terminal and resize
+            const terminalData = terminals.get(terminalId);
+            if (terminalData && terminalData.xterm) {
+                terminalData.xterm.focus();
+                
+                // Resize after a short delay to ensure proper dimensions
+                if (terminalData.fitAddon) {
+                    setTimeout(() => {
+                        terminalData.fitAddon.fit();
+                        
+                        // Send resize to backend
+                        if (invoke) {
+                            const { cols, rows } = terminalData.xterm;
+                            invoke('resize_agent_terminal', {
+                                agentId: terminalData.agentId,
+                                cols: cols,
+                                rows: rows
+                            }).catch(console.error);
+                        }
+                    }, 100);
+                }
+            }
         }
         
-        function clearChat() {
-            document.getElementById('strategy-messages').innerHTML = '';
-            addStrategyMessage('system', 'Chat cleared. Strategy AI ready for new directives.');
+        async function closeTerminal(terminalId) {
+            const terminalData = terminals.get(terminalId);
+            if (!terminalData) return;
+            
+            try {
+                // Kill the agent
+                if (invoke && terminalData.agentId) {
+                    await invoke('kill_agent', {
+                        agentId: terminalData.agentId
+                    });
+                }
+                
+                // Clean up XTerm
+                if (terminalData.xterm) {
+                    terminalData.xterm.dispose();
+                }
+                
+                // Remove UI elements
+                document.getElementById(`tab-${terminalId}`)?.remove();
+                document.getElementById(`instance-${terminalId}`)?.remove();
+                
+                // Remove from terminals map
+                terminals.delete(terminalId);
+                
+                // Switch to another terminal or show welcome
+                if (activeTerminalId === terminalId) {
+                    const remainingTerminals = Array.from(terminals.keys());
+                    if (remainingTerminals.length > 0) {
+                        switchToTerminal(remainingTerminals[0]);
+                    } else {
+                        activeTerminalId = null;
+                        showWelcomeScreen();
+                    }
+                }
+                
+                updateTerminalCount();
+                
+                console.log(`✅ Terminal ${terminalId} closed`);
+                
+            } catch (error) {
+                console.error('❌ Failed to close terminal:', error);
+            }
         }
         
-        function updateMetrics() {
-            document.getElementById('active-agents').textContent = agents.size;
-            document.getElementById('total-commands').textContent = totalCommands;
-            document.getElementById('active-processes').textContent = agents.size;
+        function updateTerminalCount() {
+            const count = terminals.size;
+            const countEl = document.getElementById('terminal-count');
+            if (countEl) {
+                countEl.textContent = `${count} terminal${count !== 1 ? 's' : ''}`;
+            }
+            
+            const statusDot = document.querySelector('.status-dot');
+            if (statusDot) {
+                statusDot.classList.toggle('active', count > 0);
+            }
         }
         
-        function startMetricsUpdater() {
-            setInterval(() => {
-                const duration = Date.now() - sessionStartTime;
-                const hours = Math.floor(duration / 3600000);
-                const minutes = Math.floor((duration % 3600000) / 60000);
-                const seconds = Math.floor((duration % 60000) / 1000);
-                document.getElementById('session-duration').textContent = 
-                    `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-            }, 1000);
+        function hideWelcomeScreen() {
+            const welcomeScreen = document.getElementById('welcome-screen');
+            if (welcomeScreen) {
+                welcomeScreen.style.display = 'none';
+            }
         }
         
-        // Initialize
-        updateMetrics();
+        function showWelcomeScreen() {
+            const welcomeScreen = document.getElementById('welcome-screen');
+            if (welcomeScreen) {
+                welcomeScreen.style.display = 'flex';
+            }
+        }
+        
+        function showNotification(message, type = 'info') {
+            console.log(`${type.toUpperCase()}: ${message}`);
+            // Could implement toast notifications here
+        }
+        
+        // Window resize handling
+        window.addEventListener('resize', () => {
+            if (activeTerminalId) {
+                const terminalData = terminals.get(activeTerminalId);
+                if (terminalData && terminalData.fitAddon) {
+                    setTimeout(() => {
+                        terminalData.fitAddon.fit();
+                    }, 100);
+                }
+            }
+        });
+        
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('🔱 Conductor Max Terminal Container initializing...');
+            
+            // Try to initialize Tauri with retries
+            let initialized = false;
+            for (let i = 0; i < 20; i++) {
+                initialized = initializeTauri();
+                if (initialized) break;
+                
+                if (i % 5 === 0) {
+                    console.log(`Waiting for Tauri API... attempt ${i + 1}/20`);
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            if (initialized && invoke) {
+                console.log('✅ Conductor Max ready!');
+            } else {
+                console.error('❌ Could not initialize Tauri API');
+                showNotification('Failed to initialize Tauri API', 'error');
+            }
+            
+            updateTerminalCount();
+        });
+        
+        console.log('🔱 Conductor Max Terminal Container loaded');
     </script>
 </body>
 </html>

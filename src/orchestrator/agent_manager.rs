@@ -15,6 +15,7 @@ use uuid::Uuid;
 pub enum AgentType {
     Claude,
     Gemini,
+    Bash,
 }
 
 impl fmt::Display for AgentType {
@@ -22,6 +23,7 @@ impl fmt::Display for AgentType {
         match self {
             AgentType::Claude => write!(f, "claude"),
             AgentType::Gemini => write!(f, "gemini"),
+            AgentType::Bash => write!(f, "bash"),
         }
     }
 }
@@ -68,15 +70,28 @@ impl AgentManager {
         let pty_system = native_pty_system();
         
         // Create PTY pair with size
-        let pty_pair = pty_system.openpty(PtySize {
+        let pty_pair = match pty_system.openpty(PtySize {
             rows: 24,
             cols: 80,
             pixel_width: 0,
             pixel_height: 0,
-        })?;
+        }) {
+            Ok(pair) => {
+                info!("PTY pair created successfully");
+                pair
+            }
+            Err(e) => {
+                error!("Failed to create PTY pair: {}", e);
+                return Err(e.into());
+            }
+        };
         
-        // Build command - use the actual CLI commands
-        let mut cmd = CommandBuilder::new(config.agent_type.to_string());
+        // Build command - start with basic shell for now
+        let mut cmd = match config.agent_type {
+            AgentType::Claude => CommandBuilder::new("bash"),
+            AgentType::Gemini => CommandBuilder::new("bash"),
+            AgentType::Bash => CommandBuilder::new("bash"),
+        };
         
         // Add workspace path if specified
         if let Some(workspace) = &config.workspace_path {
@@ -98,17 +113,44 @@ impl AgentManager {
         // The CLIs handle their own auth - no API keys needed
         
         // Spawn the child process
-        let _child = pty_pair.slave.spawn_command(cmd)?;
-        info!("Spawned {} process", config.agent_type);
+        let _child = match pty_pair.slave.spawn_command(cmd) {
+            Ok(child) => {
+                info!("Successfully spawned {} process", config.agent_type);
+                child
+            }
+            Err(e) => {
+                error!("Failed to spawn {} process: {}", config.agent_type, e);
+                return Err(e.into());
+            }
+        };
         
         // Get writer for sending input
-        let writer = pty_pair.master.take_writer()?;
+        let writer = match pty_pair.master.take_writer() {
+            Ok(w) => {
+                info!("PTY writer obtained");
+                w
+            }
+            Err(e) => {
+                error!("Failed to get PTY writer: {}", e);
+                return Err(e.into());
+            }
+        };
         
         // Create channel for output streaming
         let (output_sender, output_receiver) = mpsc::channel::<Vec<u8>>(100);
+        info!("Created output channel");
         
         // Start reader task for PTY output
-        let mut reader = pty_pair.master.try_clone_reader()?;
+        let mut reader = match pty_pair.master.try_clone_reader() {
+            Ok(r) => {
+                info!("PTY reader cloned");
+                r
+            }
+            Err(e) => {
+                error!("Failed to clone PTY reader: {}", e);
+                return Err(e.into());
+            }
+        };
         let sender_clone = output_sender.clone();
         let agent_type_str = config.agent_type.to_string();
         let agent_id_clone = agent_id.clone();

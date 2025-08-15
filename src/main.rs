@@ -22,10 +22,26 @@ async fn spawn_agent(
     agent_id: Option<String>,
     workspace_path: Option<String>,
 ) -> Result<String, String> {
+    info!("🚀 spawn_agent command called with type: {}, id: {:?}", agent_type, agent_id);
+    
     let agent_type = match agent_type.as_str() {
-        "claude" => AgentType::Claude,
-        "gemini" => AgentType::Gemini,
-        _ => return Err(format!("Unknown agent type: {}", agent_type)),
+        "claude" => {
+            info!("Parsed agent type as Claude");
+            AgentType::Claude
+        },
+        "gemini" => {
+            info!("Parsed agent type as Gemini");
+            AgentType::Gemini
+        },
+        "bash" => {
+            info!("Parsed agent type as Bash");
+            AgentType::Bash
+        },
+        _ => {
+            let error = format!("Unknown agent type: {}", agent_type);
+            info!("Error: {}", error);
+            return Err(error);
+        },
     };
 
     let config = AgentConfig {
@@ -34,11 +50,20 @@ async fn spawn_agent(
         agent_id: agent_id.clone(),
         workspace_path,
     };
+    
+    info!("Calling orchestrator.spawn_agent with config...");
 
-    state.orchestrator
-        .spawn_agent(config)
-        .await
-        .map_err(|e| e.to_string())
+    match state.orchestrator.spawn_agent(config).await {
+        Ok(id) => {
+            info!("✅ Successfully spawned agent with ID: {}", id);
+            Ok(id)
+        }
+        Err(e) => {
+            let error_str = e.to_string();
+            info!("❌ Failed to spawn agent: {}", error_str);
+            Err(error_str)
+        }
+    }
 }
 
 #[tauri::command]

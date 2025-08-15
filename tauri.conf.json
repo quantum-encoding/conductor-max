@@ -7,6 +7,7 @@
     "frontendDist": "./ui"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "🔱 Conductor Max - AI Orchestration Platform",
@@ -21,6 +22,20 @@
     ],
     "security": {
       "csp": null,
+      "capabilities": [
+        {
+          "identifier": "main-capability",
+          "description": "Main window capabilities",
+          "windows": ["main"],
+          "permissions": [
+            "core:default",
+            "core:event:allow-listen",
+            "core:event:allow-emit",
+            "shell:allow-open",
+            "shell:allow-spawn"
+          ]
+        }
+      ],
       "assetProtocol": {
         "enable": true,
         "scope": ["**"]
