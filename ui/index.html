@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://unpkg.com/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <script src="https://unpkg.com/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+    <script src="https://unpkg.com/xterm-addon-search@0.13.0/lib/xterm-addon-search.js"></script>
 </head>
 <body>
     <!-- Header -->
@@ -64,6 +65,7 @@
         // XTerm.js addons - check for correct namespace
         const FitAddon = typeof window !== 'undefined' && window.FitAddon ? window.FitAddon : null;
         const WebLinksAddon = typeof window !== 'undefined' && window.WebLinksAddon ? window.WebLinksAddon : null;
+        const SearchAddon = typeof window !== 'undefined' && window.SearchAddon ? window.SearchAddon : null;
         
         // Initialize Tauri API - CORRECT for v2.x
         function initializeTauri() {
@@ -169,13 +171,16 @@
             if (!terminalData) return;
             
             try {
-                // Create XTerm instance
+                // Create XTerm instance with full terminal capabilities
                 const xterm = new Terminal({
                     fontFamily: '"Fira Code", "SF Mono", Monaco, "Cascadia Code", monospace',
                     fontSize: 14,
                     lineHeight: 1.4,
                     cursorBlink: true,
                     cursorStyle: 'block',
+                    allowProposedApi: true,
+                    scrollback: 10000,
+                    rightClickSelectsWord: false,  // Allow right-click context menu
                     theme: {
                         background: 'hsl(220, 20%, 8%)',
                         foreground: 'hsl(220, 15%, 90%)',
@@ -202,6 +207,8 @@
                 
                 // Create and load addons
                 let fitAddon = null;
+                let searchAddon = null;
+                
                 try {
                     if (FitAddon) {
                         fitAddon = new FitAddon();
@@ -226,6 +233,18 @@
                     console.error('❌ WebLinksAddon error:', error);
                 }
                 
+                try {
+                    if (SearchAddon) {
+                        searchAddon = new SearchAddon();
+                        xterm.loadAddon(searchAddon);
+                        console.log('✅ SearchAddon loaded');
+                    } else {
+                        console.warn('⚠️ SearchAddon not available');
+                    }
+                } catch (error) {
+                    console.error('❌ SearchAddon error:', error);
+                }
+                
                 // Open terminal in container
                 const container = document.getElementById(`xterm-${terminalId}`);
                 xterm.open(container);
@@ -242,9 +261,146 @@
                     }
                 });
                 
+                // Add paste functionality
+                xterm.attachCustomKeyEventHandler((event) => {
+                    // Handle Ctrl+V for paste
+                    if (event.ctrlKey && event.key === 'v' && event.type === 'keydown') {
+                        event.preventDefault();
+                        navigator.clipboard.readText().then(text => {
+                            if (text && invoke && agentId) {
+                                sendToTerminal(agentId, text);
+                            }
+                        }).catch(err => {
+                            console.error('Failed to read clipboard:', err);
+                        });
+                        return false;
+                    }
+                    
+                    // Handle Ctrl+Shift+V for paste (common terminal shortcut)
+                    if (event.ctrlKey && event.shiftKey && event.key === 'V' && event.type === 'keydown') {
+                        event.preventDefault();
+                        navigator.clipboard.readText().then(text => {
+                            if (text && invoke && agentId) {
+                                sendToTerminal(agentId, text);
+                            }
+                        }).catch(err => {
+                            console.error('Failed to read clipboard:', err);
+                        });
+                        return false;
+                    }
+                    
+                    // Handle Ctrl+Shift+C for copy
+                    if (event.ctrlKey && event.shiftKey && event.key === 'C' && event.type === 'keydown') {
+                        const selection = xterm.getSelection();
+                        if (selection) {
+                            navigator.clipboard.writeText(selection).then(() => {
+                                console.log('Copied to clipboard');
+                            }).catch(err => {
+                                console.error('Failed to copy:', err);
+                            });
+                        }
+                        return false;
+                    }
+                    
+                    // Handle Ctrl+F for search
+                    if (event.ctrlKey && event.key === 'f' && event.type === 'keydown' && searchAddon) {
+                        event.preventDefault();
+                        const searchTerm = prompt('Search for:');
+                        if (searchTerm) {
+                            searchAddon.findNext(searchTerm, {
+                                regex: false,
+                                wholeWord: false,
+                                caseSensitive: false
+                            });
+                        }
+                        return false;
+                    }
+                    
+                    return true;
+                });
+                
+                // Add right-click context menu
+                container.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    
+                    // Create context menu
+                    const existingMenu = document.getElementById('terminal-context-menu');
+                    if (existingMenu) existingMenu.remove();
+                    
+                    const menu = document.createElement('div');
+                    menu.id = 'terminal-context-menu';
+                    menu.className = 'context-menu';
+                    menu.style.position = 'fixed';
+                    menu.style.left = e.clientX + 'px';
+                    menu.style.top = e.clientY + 'px';
+                    menu.style.zIndex = '1000';
+                    
+                    // Copy option
+                    const selection = xterm.getSelection();
+                    if (selection) {
+                        const copyItem = document.createElement('div');
+                        copyItem.className = 'context-menu-item';
+                        copyItem.innerHTML = '📋 Copy';
+                        copyItem.onclick = () => {
+                            navigator.clipboard.writeText(selection);
+                            menu.remove();
+                        };
+                        menu.appendChild(copyItem);
+                    }
+                    
+                    // Paste option
+                    const pasteItem = document.createElement('div');
+                    pasteItem.className = 'context-menu-item';
+                    pasteItem.innerHTML = '📝 Paste';
+                    pasteItem.onclick = async () => {
+                        try {
+                            const text = await navigator.clipboard.readText();
+                            if (text && invoke && agentId) {
+                                sendToTerminal(agentId, text);
+                            }
+                        } catch (err) {
+                            console.error('Failed to paste:', err);
+                        }
+                        menu.remove();
+                    };
+                    menu.appendChild(pasteItem);
+                    
+                    // Clear option
+                    const clearItem = document.createElement('div');
+                    clearItem.className = 'context-menu-item';
+                    clearItem.innerHTML = '🗑️ Clear';
+                    clearItem.onclick = () => {
+                        xterm.clear();
+                        menu.remove();
+                    };
+                    menu.appendChild(clearItem);
+                    
+                    // Select All option
+                    const selectAllItem = document.createElement('div');
+                    selectAllItem.className = 'context-menu-item';
+                    selectAllItem.innerHTML = '✅ Select All';
+                    selectAllItem.onclick = () => {
+                        xterm.selectAll();
+                        menu.remove();
+                    };
+                    menu.appendChild(selectAllItem);
+                    
+                    document.body.appendChild(menu);
+                    
+                    // Remove menu when clicking elsewhere
+                    const removeMenu = () => {
+                        menu.remove();
+                        document.removeEventListener('click', removeMenu);
+                    };
+                    setTimeout(() => {
+                        document.addEventListener('click', removeMenu);
+                    }, 0);
+                });
+                
                 // Update terminal data
                 terminalData.xterm = xterm;
                 terminalData.fitAddon = fitAddon;
+                terminalData.searchAddon = searchAddon;
                 
                 // Start output polling
                 startOutputPolling(terminalId, agentId, xterm);

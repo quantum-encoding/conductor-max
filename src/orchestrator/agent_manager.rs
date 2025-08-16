@@ -98,17 +98,36 @@ impl AgentManager {
             cmd.cwd(workspace);
         }
         
-        // Set environment for better terminal compatibility
+        // Set environment for full terminal compatibility
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
+        cmd.env("LANG", std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string()));
+        cmd.env("LC_ALL", std::env::var("LC_ALL").unwrap_or_else(|_| "en_US.UTF-8".to_string()));
         
-        // Ensure CLIs are in PATH (for Node.js installed tools)
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let node_bin_path = std::env::var("HOME")
-            .map(|home| format!("{}/.nvm/versions/node/v22.15.0/bin", home))
-            .unwrap_or_default();
-        let enhanced_path = format!("{}:{}", node_bin_path, current_path);
-        cmd.env("PATH", enhanced_path);
+        // Pass through important environment variables for full functionality
+        if let Ok(shell) = std::env::var("SHELL") {
+            cmd.env("SHELL", shell);
+        }
+        if let Ok(user) = std::env::var("USER") {
+            cmd.env("USER", user);
+        }
+        if let Ok(home) = std::env::var("HOME") {
+            cmd.env("HOME", home.clone());
+            
+            // Add common binary paths
+            let node_bin_path = format!("{}/.nvm/versions/node/v22.15.0/bin", home);
+            let cargo_bin = format!("{}/.cargo/bin", home);
+            let local_bin = format!("{}/.local/bin", home);
+            
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            let enhanced_path = format!("{}:{}:{}:{}", node_bin_path, cargo_bin, local_bin, current_path);
+            cmd.env("PATH", enhanced_path);
+        } else {
+            // Just use existing PATH if HOME not available
+            if let Ok(path) = std::env::var("PATH") {
+                cmd.env("PATH", path);
+            }
+        }
         
         // The CLIs handle their own auth - no API keys needed
         
